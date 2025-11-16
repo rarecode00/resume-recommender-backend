@@ -3,14 +3,16 @@ const multer = require('multer');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const pdf = require('pdf-parse');
-const { HfInference } = require('@huggingface/inference');
 require('dotenv').config();
 
 const app = express();
+
+// CORS configuration
 app.use(cors({
   origin: process.env.FRONTEND_URL || '*',
   credentials: true
 }));
+
 app.use(express.json());
 
 // MongoDB Connection
@@ -42,9 +44,6 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 }
 });
 
-// Initialize HuggingFace
-const hf = new HfInference(process.env.HUGGINGFACE_API_KEY);
-
 // Extract text from PDF
 async function extractTextFromPDF(buffer) {
   try {
@@ -56,18 +55,43 @@ async function extractTextFromPDF(buffer) {
   }
 }
 
-// Get embeddings from HuggingFace
+// Get embeddings using direct HuggingFace API
 async function getEmbedding(text) {
   try {
-    // Use a sentence transformer model
-    const truncatedText = text.substring(0, 5000); // Limit text length
+    const truncatedText = text.substring(0, 5000);
     
-    const response = await hf.featureExtraction({
-      model: 'sentence-transformers/all-MiniLM-L6-v2',
-      inputs: truncatedText
+    const response = await fetch('https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        inputs: truncatedText,
+        options: { 
+          wait_for_model: true,
+          use_cache: false
+        }
+      })
     });
     
-    return response;
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('HuggingFace API Error:', response.status, errorText);
+      throw new Error(`HuggingFace API error: ${response.status} - ${errorText}`);
+    }
+    
+    const result = await response.json();
+    
+    // Handle different response formats
+    if (Array.isArray(result) && Array.isArray(result[0])) {
+      return result[0]; // Single embedding
+    } else if (Array.isArray(result)) {
+      return result;
+    }
+    
+    throw new Error('Unexpected response format from HuggingFace');
+    
   } catch (error) {
     console.error('Embedding error:', error);
     throw new Error('Failed to generate embedding: ' + error.message);
@@ -77,6 +101,7 @@ async function getEmbedding(text) {
 // Calculate cosine similarity
 function cosineSimilarity(vecA, vecB) {
   if (!vecA || !vecB || vecA.length !== vecB.length) {
+    console.error('Invalid vectors for similarity calculation');
     return 0;
   }
   
@@ -141,7 +166,8 @@ app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'ok', 
     message: 'Server is running',
-    ai: 'HuggingFace Transformers'
+    ai: 'HuggingFace Transformers (Direct API)',
+    timestamp: new Date().toISOString()
   });
 });
 
@@ -178,8 +204,10 @@ app.post('/api/analyze', upload.array('resumes', 10), async (req, res) => {
         const resumeText = await extractTextFromPDF(file.buffer);
         console.log(`✅ Extracted ${resumeText.length} characters`);
         
-        // Add small delay between API calls
-        if (i > 0) await new Promise(resolve => setTimeout(resolve, 1000));
+        // Add delay between API calls to avoid rate limits
+        if (i > 0) {
+          await new Promise(resolve => setTimeout(resolve, 1500));
+        }
         
         const resumeEmbedding = await getEmbedding(resumeText);
         const score = cosineSimilarity(jobEmbedding, resumeEmbedding);
@@ -253,5 +281,5 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
-  console.log(`🤗 Using HuggingFace for embeddings`);
+  console.log(`🤗 Using HuggingFace Direct API for embeddings`);
 });
