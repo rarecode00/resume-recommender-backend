@@ -60,7 +60,7 @@ async function getEmbedding(text) {
   try {
     const truncatedText = text.substring(0, 5000);
     
-    const response = await fetch('https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2', {
+    const response = await fetch('https://router.huggingface.co/hf-inference/sentence-transformers/all-MiniLM-L6-v2', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
