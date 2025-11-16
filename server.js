@@ -59,44 +59,48 @@ async function extractTextFromPDF(buffer) {
 async function getEmbedding(text) {
   try {
     const truncatedText = text.substring(0, 5000);
-    
-    const response = await fetch('https://router.huggingface.co/hf-inference/sentence-transformers/all-MiniLM-L6-v2', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        inputs: truncatedText,
-        options: { 
-          wait_for_model: true,
-          use_cache: false
-        }
-      })
-    });
-    
+
+    const response = await fetch(
+      "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2/pipeline/feature-extraction",
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          inputs: truncatedText,
+          options: {
+            wait_for_model: true,
+            use_cache: false
+          }
+        }),
+      }
+    );
+
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('HuggingFace API Error:', response.status, errorText);
+      console.error("HuggingFace API Error:", response.status, errorText);
       throw new Error(`HuggingFace API error: ${response.status} - ${errorText}`);
     }
-    
+
     const result = await response.json();
-    
-    // Handle different response formats
+
     if (Array.isArray(result) && Array.isArray(result[0])) {
-      return result[0]; // Single embedding
-    } else if (Array.isArray(result)) {
+      return result[0]; // embedding
+    }
+
+    if (Array.isArray(result)) {
       return result;
     }
-    
-    throw new Error('Unexpected response format from HuggingFace');
-    
+
+    throw new Error("Unexpected embedding format from HuggingFace");
   } catch (error) {
-    console.error('Embedding error:', error);
-    throw new Error('Failed to generate embedding: ' + error.message);
+    console.error("Embedding error:", error);
+    throw new Error("Failed to generate embedding: " + error.message);
   }
 }
+
 
 // Calculate cosine similarity
 function cosineSimilarity(vecA, vecB) {
